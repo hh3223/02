@@ -1,0 +1,807 @@
+---
+title: "2480-Final"
+author: "Huaichen Huang"
+date: "2025-04-17"
+output: pdf_document
+---
+library(haven)
+library(tidyverse)
+library(purrr)
+library(psych)
+library(lme4)
+library(performance)
+library(lmtest)
+library(mice)
+library(gtsummary)
+
+data <- read_dta("finalproj.dta")
+
+
+# 1. Cleaning
+
+## a) variable recoding
+
+### outcome - mental health:languishing/flourishing continuous
+
+data_recode <- data
+
+# year 2017 data missing
+mental_health <- c("TA050934",
+                  "TA070915",
+                  "TA090979",
+                  "TA111121", 
+                  "TA131213",
+                  "TA151273",
+                  "TA192152")
+
+# recode 99 as NA
+for (i in 1:length(mental_health)){
+  colname <- mental_health[i]
+  data_recode[[colname]][data_recode[[colname]]==99] <- NA
+  new_colname <- paste0("mental_", i)
+  data_recode[[new_colname]] <- as.numeric(data_recode[[colname]])
+}
+
+
+### exposure - BMI continuous
+
+bmi <- c("TA050944", 
+         "TA070925",
+         "TA090989", 
+         "TA111131",
+         "TA131223", 
+         "TA151283",
+         "TA192188")
+
+# recode 99 as NA
+for (i in 1:length(bmi)){
+  colname <- bmi[i]
+  data_recode[[colname]][data_recode[[colname]] == 99] <- NA
+  new_colname <- paste0("bmi_", i)
+  data_recode[[new_colname]] <- data_recode[[colname]]
+}
+
+
+### race/ethnicity
+
+## 05
+# combine hispanic ethnicity and race
+data_recode$race_1 <- case_when(
+  data$TA050883 == 0 & data$TA050884 == 1 ~ 1, # white
+  data$TA050883 %in% c(1,2,3,4,5,6,7) ~ 2, # hispanic
+  data$TA050883 == 0 & data$TA050884 == 2 ~ 3, #black
+  data$TA050883 == 0 &data$TA050884 %in% c(3,4,5,7) ~ 4, 
+# Asian or American Indian or Alaska Native/Native Hawaiian or Pacific Islander/Some other race -- other (because the number of observations for these categories is small so I combine them into one group)
+  .default = NA)
+
+# convert to factor type
+data_recode$race_1 <- factor(data_recode$race_1,
+                               labels=c("Non-Hispanic White",
+                                        "Hispanic",
+                                        "Non-Hispanic Black",
+                                        "Other"),
+                               levels = c(1,2,3,4))
+
+
+## 07
+# combine hispanic ethnicity and race
+data_recode$race_2 <- case_when(
+  data$TA070864 == 0 & data$TA070865 == 1 ~ 1, # white
+  data$TA070864 %in% c(1,2,3,4,5,6,7) ~ 2, # hispanic
+  data$TA070864 == 0 & data$TA070865 == 2 ~ 3, #black
+  data$TA070864 == 0 &data$TA070865 %in% c(3,4,5,7) ~ 4, # other
+  .default = NA)
+
+# convert to factor type
+data_recode$race_2 <- factor(data_recode$race_2,
+                               labels=c("Non-Hispanic White",
+                                        "Hispanic",
+                                        "Non-Hispanic Black",
+                                        "Other"),
+                               levels = c(1,2,3,4))
+
+
+## 09
+# combine hispanic ethnicity and race
+data_recode$race_3 <- case_when(
+  data$TA090924 == 0 & data$TA090925 == 1 ~ 1, # white
+  data$TA090924 %in% c(1,2,3,4,5,7) ~ 2, # hispanic
+  data$TA090924 == 0 & data$TA090925 == 2 ~ 3, #black
+  data$TA090924 == 0 &data$TA090925 %in% c(3,4,5,7) ~ 4, # other
+  .default = NA)
+
+# convert to factor type
+data_recode$race_3 <- factor(data_recode$race_3,
+                               labels=c("Non-Hispanic White",
+                                        "Hispanic",
+                                        "Non-Hispanic Black",
+                                        "Other"),
+                               levels = c(1,2,3,4))
+
+
+## 11
+# combine hispanic ethnicity and race
+data_recode$race_4 <- case_when(
+  data$TA111056 == 0 & data$TA111057 == 1 ~ 1, # white
+  data$TA111056 %in% c(1,2,3,4,5,7) ~ 2, # hispanic
+  data$TA111056 == 0 & data$TA111057 == 2 ~ 3, #black
+  data$TA111056 == 0 &data$TA111057 %in% c(3,4,5,7) ~ 4, # other
+  .default = NA)
+
+# convert to factor type
+data_recode$race_4 <- factor(data_recode$race_4,
+                               labels=c("Non-Hispanic White",
+                                        "Hispanic",
+                                        "Non-Hispanic Black",
+                                        "Other"),
+                               levels = c(1,2,3,4))
+
+## 13
+# combine hispanic ethnicity and race
+data_recode$race_5 <- case_when(
+  data$TA131091 == 0 & data$TA131092 == 1 ~ 1, # white
+  data$TA131091 %in% c(1,2,3,4,5,7) ~ 2, # hispanic
+  data$TA131091 == 0 & data$TA131092 == 2 ~ 3, #black
+  data$TA131091 == 0 &data$TA131092 %in% c(3,4,5,7) ~ 4, # other
+  .default = NA)
+
+# convert to factor type
+data_recode$race_5 <- factor(data_recode$race_5,
+                               labels=c("Non-Hispanic White",
+                                        "Hispanic",
+                                        "Non-Hispanic Black",
+                                        "Other"),
+                               levels = c(1,2,3,4))
+
+
+## 15
+# combine hispanic ethnicity and race
+data_recode$race_6 <- case_when(
+  data$TA151131 == 0 & data$TA151132 == 1 ~ 1, # white
+  data$TA151131 %in% c(1,2,3,4,5,7) ~ 2, # hispanic
+  data$TA151131 == 0 & data$TA151132 == 2 ~ 3, #black
+  data$TA151131 == 0 &data$TA151132 %in% c(3,4,5,7) ~ 4, # other
+  .default = NA)
+
+# convert to factor type
+data_recode$race_6 <- factor(data_recode$race_6,
+                               labels=c("Non-Hispanic White",
+                                        "Hispanic",
+                                        "Non-Hispanic Black",
+                                        "Other"),
+                               levels = c(1,2,3,4))
+
+
+## 19
+data_recode$race_7 <- case_when(
+  data$TA192131 == 1 ~ 1, # white
+  data$TA192131 == 2 ~ 2, # hispanic
+  data$TA192131 == 3 ~ 3, #black
+  data$TA192131 %in% c(4,5,6,7,8) ~ 4, # other
+  .default = NA)
+
+data_recode$race_7 <- factor(data_recode$race_7,
+                               labels=c("Non-Hispanic White",
+                                        "Hispanic",
+                                        "Non-Hispanic Black",
+                                        "Other"),
+                               levels = c(1,2,3,4))
+
+
+
+### age
+
+
+age <- c("ER33804", "ER33904", "ER34004", "ER34104", "ER34204", "ER34305","ER34704")
+
+for (i in 1:length(age)){
+  colname <- age[i]
+  data_recode[[colname]][data_recode[[colname]] %in% c(0,999)] <- NA
+  new_colname <- paste0("age_", i)
+  data_recode[[new_colname]] <- data_recode[[colname]]
+}
+
+
+### discrimination
+
+discrim <- c("TA050943", "TA070924", "TA090988", "TA111130", "TA131222", "TA151282","TA192156")
+
+for (i in 1:length(discrim)){
+  colname <- discrim[i]
+  data_recode[[colname]][data_recode[[colname]]==9] <- NA
+  new_colname <- paste0("discrim_", i)
+  data_recode[[new_colname]] <- as.numeric(data_recode[[colname]])
+}
+
+
+### marijuana
+
+marijuana <- c("TA050786", "TA070757", "TA090816", "TA110932", "TA130965", "TA150987","TA191990")
+
+for (i in 1:length(marijuana)){
+  colname <- marijuana[i]
+  data_recode[[colname]][data_recode[[colname]] %in% c(8,9)] <- NA
+  new_colname <- paste0("marijuana_", i)
+  data_recode[[new_colname]] <- as.factor(data_recode[[colname]])
+}
+
+
+
+
+
+## b) selected dataset
+
+# select variables
+data_selected <- data_recode %>%
+  select(PID,TAS,TAS05,TAS07,TAS09,TAS11,TAS13,TAS15,TAS19,
+         mental_1:mental_7,
+         bmi_1:bmi_7,
+         race_1:race_7,
+         age_1:age_7,
+         discrim_1:discrim_7,
+         marijuana_1:marijuana_7) %>%
+  mutate(TAS=rowSums(across(c(TAS05, TAS07, TAS09, TAS11, TAS13,TAS15,TAS19)), 
+                     na.rm = TRUE))
+
+
+table(data_selected$TAS)
+#    0    1    2    3    4    5 
+#  305 1789  535  631  971  545 
+
+# since 2019 is the 8th wave, rename it
+data_selected <- data_selected %>%
+  rename_with(~ gsub("_7", "_8", .x))
+
+# double check
+colnames(data_selected)
+
+
+## c) conflicted response for race - recode as NA
+
+# race should be time-invariant, however in this dataset it is not
+
+# use the code below to check
+conflict_race<- data_selected %>%
+  rowwise() %>%
+  mutate(race_unique_n = n_distinct(na.omit(c_across(race_1:race_5)))) %>%
+  ungroup() %>%
+  filter(race_unique_n > 1) %>%
+  select(PID, race_1:race_5)
+
+nrow(conflict_race)
+# 106
+
+# recode these conflicts as NA
+
+race_recode <- function(x) {
+  x <- na.omit(x)
+  if (length(unique(x)) == 1) {
+    return(x[1])
+  } else {
+    return(NA)
+  }
+}
+
+data_selected <- data_selected %>%
+  rowwise() %>%
+  mutate(race=race_recode(c_across(race_1:race_5)))%>%
+  ungroup() %>%
+  select(-race_1:-race_8)
+
+
+## d) check missing
+
+# if select all waves
+data_nona <- data_selected %>%
+  filter(if_all(c(mental_1:mental_8, bmi_1:bmi_8,age_1:age_8,race,
+                  discrim_1:discrim_8,marijuana_1:marijuana_8), ~ !is.na(.)))
+
+dim(data_nona)
+# [1]  0 45
+
+# if select first 5 waves
+data_nona <- data_selected %>%
+  select(PID,TAS,mental_1:mental_5, bmi_1:bmi_5,age_1:age_5,race,
+         discrim_1:discrim_5,marijuana_1:marijuana_5) %>%
+  filter(if_all(c(mental_1:mental_5), ~ !is.na(.)))
+
+dim(data_nona)
+# [1] 233  28
+
+
+# if select last 5 waves
+#data_nona <- data_selected %>%
+#   filter(if_all(c(mental_3:mental_8), ~ !is.na(.)))
+
+# dim(data_nona)
+# [1] 100 45
+
+# Therefore select first 5 waves, only keep observations that have values in all 5 waves
+# for outcome, can't do imputation -- too many missing
+
+# write_csv(data_nona,"wide_data_clean.csv")
+
+library(naniar)
+gg_miss_var(data_nona)
+
+data_nona2<-data_nona %>%
+  select(-PID,-TAS)
+
+# imputation for predictors
+set.seed(123)
+imp <- mice(data_nona2, method = "pmm", m = 5)
+data_imputed <- complete(imp)
+
+data_nona3 <- data_nona %>%
+  select(PID)
+
+data_imputed<-cbind(data_nona3,data_imputed)
+
+write_csv(data_nona,"wide_data_clean.csv")
+write_csv(data_imputed,"wide_data_imputed.csv")
+
+
+
+## e) pivot to long format
+
+longdf <- data_imputed %>%
+  pivot_longer(
+    cols = starts_with("mental_"),
+    values_to = "mh",
+    names_to = "name.mh") %>%
+  dplyr::select(PID,race,mh,name.mh) %>%
+  mutate(wave = case_when(
+    name.mh == "mental_1" ~ 0,
+    name.mh == "mental_2" ~ 1,
+    name.mh == "mental_3" ~ 2,
+    name.mh == "mental_4" ~ 3,
+    name.mh == "mental_5" ~ 4
+  )) 
+
+longdf2<-data_imputed %>%
+  dplyr::select(PID,bmi_1:bmi_5) %>%
+  pivot_longer(
+    cols = starts_with("bmi_"),
+    values_to = "bmi",
+    names_to = "name.bmi") %>%
+  dplyr::select(PID,name.bmi,bmi) %>%
+  mutate(wave = case_when(
+    name.bmi == "bmi_1" ~ 0,
+    name.bmi == "bmi_2" ~ 1,
+    name.bmi == "bmi_3" ~ 2,
+    name.bmi == "bmi_4" ~ 3,
+    name.bmi == "bmi_5" ~ 4
+  )) %>%
+  full_join(
+    longdf,by=c("PID","wave")
+  )
+
+longdf3<-data_imputed %>%
+  dplyr::select(PID,age_1:age_5) %>%
+  pivot_longer(
+    cols = starts_with("age_"),
+    values_to = "age",
+    names_to = "name.age") %>%
+  dplyr::select(PID,name.age,age) %>%
+  mutate(wave = case_when(
+    name.age == "age_1" ~ 0,
+    name.age == "age_2" ~ 1,
+    name.age == "age_3" ~ 2,
+    name.age == "age_4" ~ 3,
+    name.age == "age_5" ~ 4
+  )) %>%
+  full_join(
+    longdf2,by=c("PID","wave")
+  )
+
+longdf4<-data_imputed %>%
+  dplyr::select(PID,discrim_1:discrim_5) %>%
+  pivot_longer(
+    cols = starts_with("discrim_"),
+    values_to = "discrim",
+    names_to = "name.discrim") %>%
+  dplyr::select(PID,name.discrim,discrim) %>%
+  mutate(wave = case_when(
+    name.discrim == "discrim_1" ~ 0,
+    name.discrim == "discrim_2" ~ 1,
+    name.discrim == "discrim_3" ~ 2,
+    name.discrim == "discrim_4" ~ 3,
+    name.discrim == "discrim_5" ~ 4
+  )) %>%
+  full_join(
+    longdf3,by=c("PID","wave")
+  )
+
+
+longdf5<-data_imputed %>%
+  dplyr::select(PID,marijuana_1:marijuana_5) %>%
+  pivot_longer(
+    cols = starts_with("marijuana_"),
+    values_to = "marijuana",
+    names_to = "name.marijuana") %>%
+  dplyr::select(PID,name.marijuana,marijuana) %>%
+  mutate(wave = case_when(
+    name.marijuana == "marijuana_1" ~ 0,
+    name.marijuana == "marijuana_2" ~ 1,
+    name.marijuana == "marijuana_3" ~ 2,
+    name.marijuana == "marijuana_4" ~ 3,
+    name.marijuana == "marijuana_5" ~ 4
+  )) %>%
+  full_join(
+    longdf4,by=c("PID","wave")
+  )
+
+
+colnames(longdf5)<-tolower(colnames(longdf5))
+
+
+# center bmi and age
+finaldf <- longdf5 %>%
+  mutate(bmi_c = bmi-mean(bmi),
+         age_c = age-mean(age))
+
+write_csv(finaldf,"long_data_clean.csv")
+
+
+# 2. Analysis
+
+## 0) individual
+
+models <- finaldf %>%
+  group_by(pid) %>%
+  do(model = lm(mh~wave, data=.))
+
+
+intercept <- slope <- NULL
+for(i in 1:nrow(models)){
+  intercept[i] <- models[[2]][[i]][["coefficients"]][1] 
+  slope[i] <- models[[2]][[i]][["coefficients"]][2]
+}
+
+mean(intercept)
+# [1] 13.60858
+mean(slope)
+# [1] 0.04377682
+var(intercept)
+# [1] 4.571995
+var(slope)
+# [1] 0.4209202
+
+cor(intercept, slope)
+# [1] -0.5770173
+
+
+
+
+## a) Descriptive
+
+
+describe(data_imputed)
+
+summary(data_imputed$race)
+
+table1<-data_imputed %>%
+  tbl_summary(
+    include = c(mental_1:mental_5, bmi_1:bmi_5,age_1:age_5,race,
+         discrim_1:discrim_5,marijuana_1:marijuana_5),
+    type = list(
+      c(race,marijuana_1:marijuana_5) ~ "categorical",
+      c(mental_1:mental_5, bmi_1:bmi_5,age_1:age_5,
+         discrim_1:discrim_5) ~ "continuous"),
+    statistic = list(all_continuous() ~ "{mean} ({sd})",
+                     all_categorical() ~ "{n} ({p})"))
+
+table1
+
+
+
+
+
+
+## b) unconditional mean
+
+model1<-lmer(mh ~ 1 + (1 |pid), data = finaldf, REML = FALSE)
+summary(model1)
+
+#Linear mixed model fit by maximum likelihood  ['lmerMod']
+#Formula: mh ~ 1 + (1 | pid)
+#   Data: longdf5
+#
+#     AIC      BIC   logLik deviance df.resid 
+#  4928.6   4943.8  -2461.3   4922.6     1162 
+
+#Scaled residuals: 
+#    Min      1Q  Median      3Q     Max 
+#-3.9228 -0.4763  0.1140  0.5441  2.9545 
+#
+#Random effects:
+# Groups   Name        Variance Std.Dev.
+# pid      (Intercept) 2.467    1.571   
+# Residual             2.869    1.694   
+#Number of obs: 1165, groups:  pid, 233
+#
+#Fixed effects:
+#            Estimate Std. Error t value
+#(Intercept)  13.6961     0.1142   119.9
+
+icc(model1)
+
+
+Average mental health score : 13.70
+
+variance different from 0.
+
+## c) unconditional growth model 
+
+model2<-lmer(mh ~ wave + (wave |pid), data = finaldf, REML = FALSE)
+summary(model2)
+
+#Linear mixed model fit by maximum likelihood  ['lmerMod']
+#Formula: mh ~ wave + (wave | pid)
+#   Data: longdf5
+#
+#     AIC      BIC   logLik deviance df.resid 
+#  4904.2   4934.5  -2446.1   4892.2     1159 
+#
+#Scaled residuals: 
+#    Min      1Q  Median      3Q     Max 
+#-4.2589 -0.4438  0.0697  0.5273  2.9744 
+#
+#Random effects:
+# Groups   Name        Variance Std.Dev. Corr 
+# pid      (Intercept) 3.0992   1.7604        
+#          wave        0.1769   0.4206   -0.42
+# Residual             2.4220   1.5563        
+#Number of obs: 1165, groups:  pid, 233
+#
+#Fixed effects:
+#            Estimate Std. Error t value
+#(Intercept) 13.60858    0.13978  97.358
+#wave         0.04378    0.04241   1.032
+
+#Correlation of Fixed Effects:
+#     (Intr)
+#wave -0.577
+
+
+
+
+## d) conditional growth model -- bmi only
+
+model3<-lmer(mh ~ wave+ bmi_c + (wave |pid), data = finaldf, REML = FALSE)
+summary(model3)
+
+#Linear mixed model fit by maximum likelihood  ['lmerMod']
+#Formula: mh ~ wave + bmi_c + (wave | pid)
+#   Data: finaldf
+#
+#     AIC      BIC   logLik deviance df.resid 
+#  4895.8   4931.2  -2440.9   4881.8     1158 
+#
+#Scaled residuals: 
+#    Min      1Q  Median      3Q     Max 
+#-4.2472 -0.4438  0.0709  0.5216  2.9730 
+#
+#Random effects:
+# Groups   Name        Variance Std.Dev. Corr 
+# pid      (Intercept) 3.081    1.7554        
+#          wave        0.180    0.4243   -0.45
+# Residual             2.412    1.5529        
+#Number of obs: 1165, groups:  pid, 233
+#
+#Fixed effects:
+#            Estimate Std. Error t value
+#(Intercept) 13.53769    0.14110  95.945
+#wave         0.07922    0.04388   1.805
+#bmi_c       -0.05302    0.01627  -3.259
+
+#Correlation of Fixed Effects:
+#      (Intr) wave  
+#wave  -0.607           
+#bmi_c  0.154 -0.248
+
+
+
+## e) conditional model with all predictors
+
+model4<-lmer(mh ~ wave+ bmi_c +age_c+race+discrim+marijuana+(wave|pid), 
+             data = finaldf, REML = FALSE)
+summary(model4)
+
+#Linear mixed model fit by maximum likelihood  ['lmerMod']
+#Formula: 
+#mh ~ wave + bmi_c + age_c + race + discrim + marijuana + (wave |  
+#    pid)
+#   Data: finaldf
+#
+#     AIC      BIC   logLik deviance df.resid 
+#  4838.8   4904.6  -2406.4   4812.8     1152 
+#
+#Scaled residuals: 
+#    Min      1Q  Median      3Q     Max 
+#-3.9898 -0.4723  0.0540  0.5547  3.3323 
+#
+#Random effects:
+# Groups   Name        Variance Std.Dev. Corr 
+# pid      (Intercept) 2.9322   1.7124        
+#          wave        0.1638   0.4047   -0.51
+# Residual             2.3095   1.5197        
+#Number of obs: 1165, groups:  pid, 233
+#
+#Fixed effects:
+#                       Estimate Std. Error t value
+#(Intercept)            15.13173    0.61465  24.618
+#wave                    0.02799    0.27771   0.101
+#bmi_c                  -0.05200    0.01643  -3.165
+#age_c                   0.02106    0.13750   0.153
+#raceHispanic           -0.09384    0.41652  -0.225
+#raceNon-Hispanic Black -0.11127    0.23799  -0.468
+#raceOther               1.14882    1.16106   0.989
+#discrim                -0.55049    0.06666  -8.258
+#marijuana1             -0.09599    0.14285  -0.672
+
+#Correlation of Fixed Effects:
+#            (Intr) wave   bmi_c  age_c  rcHspn rcN-HB rcOthr discrm
+#wave        -0.921                                                 
+#bmi_c        0.083 -0.035                                          
+#age_c        0.909 -0.988 -0.006                                   
+#raceHispanc -0.108  0.003 -0.162  0.002                            
+#rcNn-HspncB -0.198  0.021 -0.301 -0.011  0.270                     
+#raceOther   -0.047  0.003 -0.011 -0.002  0.047  0.082              
+#discrim     -0.318  0.050 -0.009 -0.043  0.027  0.014  0.051       
+#marijuana1  -0.113 -0.005  0.039 -0.023  0.034  0.088 -0.006 -0.063
+
+
+
+## f) conditional model with bmi and discrim
+
+model5<-lmer(mh ~ wave+ bmi_c + discrim + (wave|pid), 
+             data = finaldf, REML = FALSE)
+summary(model5)
+
+finaldf$mh_z <- scale(finaldf$mh)
+test <- lmer(mh_z ~ wave+ bmi_c + discrim + (wave|pid), 
+             data = finaldf, REML = FALSE)
+summary(test)
+
+
+#Linear mixed model fit by maximum likelihood  ['lmerMod']
+#Formula: mh ~ wave + bmi_c + discrim + (wave | pid)
+#   Data: finaldf
+#
+#     AIC      BIC   logLik deviance df.resid 
+#  4830.5   4871.0  -2407.2   4814.5     1157 
+#
+#Scaled residuals: 
+#    Min      1Q  Median      3Q     Max 
+#-4.0023 -0.4729  0.0502  0.5546  3.2942 
+#
+#Random effects:
+# Groups   Name        Variance Std.Dev. Corr 
+# pid      (Intercept) 2.9519   1.7181        
+#          wave        0.1645   0.4056   -0.50
+# Residual             2.3080   1.5192        
+#Number of obs: 1165, groups:  pid, 233
+#
+#Fixed effects:
+#            Estimate Std. Error t value
+#(Intercept) 14.97688    0.22073  67.850
+#wave         0.06629    0.04252   1.559
+#bmi_c       -0.05398    0.01560  -3.460
+#discrim     -0.55513    0.06640  -8.361
+
+#Correlation of Fixed Effects:
+#        (Intr) wave   bmi_c 
+#wave    -0.424              
+#bmi_c    0.094 -0.245       
+#discrim -0.780  0.038  0.001
+
+
+## g)  model fit statistics
+
+### aic
+
+# aic
+AIC(model1,model2,model3,model4,model5)
+#         df  AIC
+# model1	3	4928.569		
+# model2	6	4904.155		
+# model3	7	4895.776		
+# model4	13	4838.807		
+# model5	8	4830.499	
+
+
+### bic
+
+# bic
+BIC(model1,model2,model3,model4,model5)
+#         df  BIC
+#model1	3	4943.751		
+#model2	6	4934.518		
+#model3	7	4931.199		
+#model4	13	4904.593		
+#model5	8	4870.983	
+
+
+### deviance
+
+# deviance
+lrtest(model5, model1)
+lrtest(model5, model2)
+lrtest(model5, model3)
+# above all significant
+
+lrtest(model5, model4) 
+#Likelihood ratio test
+
+
+#Model 1: mh ~ wave + bmi + discrim + (wave | pid)
+#Model 2: mh ~ wave + bmi + age + race + discrim + marijuana + (wave | 
+#    pid)
+#  #Df  LogLik Df  Chisq Pr(>Chisq)
+#1   8 -2407.2                     
+#2  13 -2406.4  5 1.6921     0.8899
+
+
+
+
+## h) model assumption check
+
+### individual plot
+
+set.seed(123)
+sample1<-as.data.frame(sample(data_imputed$PID,size=20))
+sample1 <- sample1 %>%
+  rename(pid = `sample(data_imputed$PID, size = 20)`)
+
+sample_long <- sample1 %>%
+  left_join(longdf5, by = "pid")
+
+ggplot(data=sample_long,aes(x=wave,y=mh))+
+  geom_point()+
+  geom_smooth(method = "lm")+
+  facet_wrap(vars(pid))
+
+
+### normality
+
+resid_vals <- resid(model5)
+qqnorm(resid_vals, main = "level 1")
+qqline(resid_vals)
+
+
+ranef_intercept <- ranef(model5)$pid[, "(Intercept)"]
+qqnorm(ranef_intercept, main = "level 2 - intercept")
+qqline(ranef_intercept)
+
+
+ranef_slope <- ranef(model5)$pid[, "wave"]
+qqnorm(ranef_slope, main = "level 2 - slope")
+qqline(ranef_slope)
+
+
+### homogeneity
+
+df_homo <- cbind(finaldf, resid_vals)
+
+ggplot(df_homo, aes(x = wave, y = resid_vals)) +
+  geom_point(alpha = 0.5) +
+  labs(x = "Wave",
+       y = "Level 1 Residual", 
+       title = "Level 1 Residuals vs. Wave")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggplot(df_homo, aes(x = bmi_c, y = resid_vals)) +
+  geom_point(alpha = 0.5) +
+  labs(x = "BMI_c",
+       y = "Level 1 Residual", 
+       title = "Level 1 Residuals vs. BMI")+
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggplot(df_homo, aes(x = discrim, y = resid_vals)) +
+  geom_point(alpha = 0.5) +
+  labs(x = "Discrim",
+       y = "Level 1 Residual", 
+       title = "Level 1 Residuals vs. Discrimination")+
+  theme(plot.title = element_text(hjust = 0.5))
+
